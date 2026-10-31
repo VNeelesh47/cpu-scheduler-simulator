@@ -354,7 +354,7 @@ function App() {
       <section className="page-heading">
         <div>
           <div className="eyebrow">
-            PROCESS MANAGEMENT / 01
+            PROCESS MANAGEMENT 
           </div>
 
           <h1>
