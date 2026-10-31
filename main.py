@@ -71,6 +71,7 @@ def validate_processes(processes: list[Process]) -> None:
 
 
 @app.get("/")
+@app.get("/api")
 def home():
     return {
         "message": "CPU Scheduling Simulator API is running"
@@ -78,6 +79,7 @@ def home():
 
 
 @app.post("/simulate")
+@app.post("/api/simulate")
 def simulate(request: SimulationRequest):
     validate_processes(request.processes)
 
@@ -94,10 +96,14 @@ def simulate(request: SimulationRequest):
             quantum=request.quantum
         )
     except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+        raise HTTPException(
+            status_code=400,
+            detail=str(error)
+        ) from error
 
 
 @app.post("/compare")
+@app.post("/api/compare")
 def compare(request: ComparisonRequest):
     validate_processes(request.processes)
 
@@ -107,4 +113,7 @@ def compare(request: ComparisonRequest):
             quantum=request.quantum
         )
     except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+        raise HTTPException(
+            status_code=400,
+            detail=str(error)
+        ) from error
