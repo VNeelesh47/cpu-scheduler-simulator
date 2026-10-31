@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import "./App.css";
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = "/api";
 
 const initialProcesses = [
   { pid: "P1", arrival_time: "0", burst_time: "5", priority: "2" },
