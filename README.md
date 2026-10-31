@@ -20,6 +20,7 @@ A Python and FastAPI backend for simulating common CPU scheduling algorithms. It
 
 ```text
 CPU_Scheduling_Simulator/
+│
 ├── backend/
 │   ├── __init__.py
 │   ├── fcfs.py
@@ -29,10 +30,24 @@ CPU_Scheduling_Simulator/
 │   ├── process.py
 │   ├── metrics.py
 │   └── scheduler.py
+│
+├── frontend/
+│   ├── src/
+│   │   ├── App.css
+│   │   ├── App.jsx
+│   │   ├── index.css
+│   │   └── main.jsx
+│   │
+│   ├── index.html
+│   ├── package.json
+│   └── package-lock.json
+│
 ├── tests/
+│
+├── .gitignore
 ├── main.py
-├── requirements.txt
-└── README.md
+├── README.md
+└── requirements.txt
 ```
 
 The React frontend will be maintained separately from this Python backend.
