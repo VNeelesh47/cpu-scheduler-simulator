@@ -59,6 +59,9 @@ function App() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [comparison, setComparison] = useState(null);
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonError, setComparisonError] = useState("");
 
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -95,6 +98,7 @@ function App() {
   }, [playing, totalTime, speed]);
 
   function updateCell(rowIndex, key, value) {
+    setComparison(null);
     setProcesses((current) =>
       current.map((process, index) =>
         index === rowIndex
@@ -105,6 +109,7 @@ function App() {
   }
 
   function addProcess() {
+    setComparison(null);
     const usedNumbers = processes
       .map((p) => Number(p.pid.replace(/\D/g, "")))
       .filter(Number.isFinite);
@@ -129,6 +134,7 @@ function App() {
   }
 
   function removeProcess(index) {
+    setComparison(null);
     if (processes.length === 1) {
       setError("At least one process is required.");
       return;
@@ -154,6 +160,7 @@ function App() {
     }
 
     event.preventDefault();
+    setComparison(null);
 
     const pastedRows = pastedText
       .trim()
@@ -293,6 +300,53 @@ function App() {
       );
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function runFaceOff() {
+    const validationError = validateProcesses();
+    if (validationError) {
+      setComparisonError(validationError);
+      return;
+    }
+    if (!Number.isInteger(Number(quantum)) || Number(quantum) <= 0) {
+      setComparisonError("Time quantum must be a positive integer for the Round Robin comparison.");
+      return;
+    }
+
+    setComparisonLoading(true);
+    setComparisonError("");
+    setComparison(null);
+
+    const payload = {
+      processes: processes.map((process) => ({
+        pid: process.pid.trim(),
+        arrival_time: Number(process.arrival_time),
+        burst_time: Number(process.burst_time),
+        priority: Number(process.priority),
+      })),
+      quantum: Number(quantum),
+    };
+
+    try {
+      const response = await fetch(`${API_URL}/compare`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || "Comparison request failed.");
+      }
+      setComparison(data);
+    } catch (err) {
+      setComparisonError(
+        err.message === "Failed to fetch"
+          ? "Cannot connect to the backend. Make sure FastAPI is running."
+          : err.message
+      );
+    } finally {
+      setComparisonLoading(false);
     }
   }
 
@@ -565,9 +619,10 @@ function App() {
                 min="1"
                 step="1"
                 value={quantum}
-                onChange={(event) =>
-                  setQuantum(event.target.value)
-                }
+                onChange={(event) => {
+                  setQuantum(event.target.value);
+                  setComparison(null);
+                }}
               />
             </label>
           )}
@@ -603,6 +658,122 @@ function App() {
           </p>
         )}
       </section>
+
+      {/* Algorithm Face-Off */}
+      <section className="faceoff-launch panel">
+        <div>
+          <div className="section-kicker">03 / ALGORITHM FACE-OFF</div>
+          <h2>Which algorithm performs best?</h2>
+          <p>
+            Run all six algorithms against the same process set and compare
+            their performance using one consistent input.
+          </p>
+        </div>
+        <button
+          className="run-button faceoff-button"
+          onClick={runFaceOff}
+          disabled={comparisonLoading}
+        >
+          {comparisonLoading ? (
+            <span className="loading-spinner" />
+          ) : (
+            <ChartNoAxesCombined size={15} />
+          )}
+          {comparisonLoading ? "Comparing..." : "Run algorithm face-off"}
+        </button>
+        {comparisonError && (
+          <div className="error-message faceoff-error">
+            <span>!</span>{comparisonError}
+          </div>
+        )}
+      </section>
+
+      {comparison && (
+        <motion.section
+          className="faceoff-results"
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <div className="results-heading">
+            <div>
+              <div className="section-kicker">04 / COMPARATIVE ANALYSIS</div>
+              <h2>Algorithm Face-Off</h2>
+              <p className="insight-subtitle">
+                Six algorithms. Same processes. Five performance measures.
+              </p>
+            </div>
+            <span className="faceoff-count">6 ALGORITHMS</span>
+          </div>
+
+          <div className="faceoff-grid">
+            {[
+              { key: "average_waiting_time", label: "AVG WAITING", unit: "units", lower: true },
+              { key: "average_turnaround_time", label: "AVG TURNAROUND", unit: "units", lower: true },
+              { key: "average_response_time", label: "AVG RESPONSE", unit: "units", lower: true },
+              { key: "cpu_utilization", label: "CPU UTILIZATION", unit: "%", lower: false },
+              { key: "throughput", label: "THROUGHPUT", unit: "proc/unit", lower: false },
+            ].map((metric) => {
+              const ranked = Object.entries(comparison)
+                .map(([name, values]) => ({ name, value: values[metric.key] }))
+                .sort((a, b) => metric.lower ? a.value - b.value : b.value - a.value);
+              const winner = ranked[0];
+              return (
+                <article className="faceoff-metric panel" key={metric.key}>
+                  <div className="faceoff-metric-label">{metric.label}</div>
+                  <div className="faceoff-winner">{winner.name.replaceAll("_", " ")}</div>
+                  <div className="faceoff-winner-value">
+                    {Number(winner.value).toFixed(2)} <small>{metric.unit}</small>
+                  </div>
+                  <div className="faceoff-ranking">
+                    {ranked.map((entry, index) => (
+                      <div className="rank-row" key={entry.name}>
+                        <span className="rank-number">{index + 1}</span>
+                        <span className="rank-name">{entry.name.replaceAll("_", " ")}</span>
+                        <strong>{Number(entry.value).toFixed(2)}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          <div className="faceoff-table-panel panel">
+            <div className="process-metrics-heading">
+              <div>
+                <h3>Complete comparison</h3>
+                <p>Lower is better for time metrics; higher is better for utilization and throughput.</p>
+              </div>
+            </div>
+            <div className="metrics-table-scroll">
+              <table className="performance-table faceoff-table">
+                <thead>
+                  <tr>
+                    <th>ALGORITHM</th>
+                    <th>AVG WT</th>
+                    <th>AVG TAT</th>
+                    <th>AVG RT</th>
+                    <th>CPU UTIL.</th>
+                    <th>THROUGHPUT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(comparison).map(([name, values]) => (
+                    <tr key={name}>
+                      <td><strong>{name.replaceAll("_", " ")}</strong></td>
+                      <td>{Number(values.average_waiting_time).toFixed(2)}</td>
+                      <td>{Number(values.average_turnaround_time).toFixed(2)}</td>
+                      <td>{Number(values.average_response_time).toFixed(2)}</td>
+                      <td>{Number(values.cpu_utilization).toFixed(2)}%</td>
+                      <td>{Number(values.throughput).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </motion.section>
+      )}
 
       {/* Error message */}
       {error && (
@@ -793,6 +964,21 @@ function App() {
             </div>
           </div>
 
+          {/* Scheduling Insights */}
+          {simulationFinished && (
+            <SchedulingInsights
+              algorithm={algorithm}
+              timeline={result.timeline}
+              metrics={metrics}
+              processes={processes.map((process) => ({
+                ...process,
+                arrival_time: Number(process.arrival_time),
+                burst_time: Number(process.burst_time),
+                priority: Number(process.priority),
+              }))}
+            />
+          )}
+
           {/* Metrics appear only after playback */}
           {simulationFinished && (
             <motion.div
@@ -961,6 +1147,125 @@ function App() {
         <span>BUILT FOR UNDERSTANDING THE PROCESS</span>
       </footer>
     </main>
+  );
+}
+
+function SchedulingInsights({ algorithm, timeline, metrics, processes }) {
+  const names = {
+    FCFS: "First Come First Served",
+    SJF_NP: "Shortest Job First (Non-preemptive)",
+    SJF_P: "Shortest Remaining Time First",
+    PRIORITY_NP: "Priority (Non-preemptive)",
+    PRIORITY_P: "Priority (Preemptive)",
+    RR: "Round Robin",
+  };
+
+  const rules = {
+    FCFS: "Processes are selected in order of arrival. Once a process gets the CPU, it runs until its burst is complete.",
+    SJF_NP: "Among the processes that have arrived, the process with the shortest burst time is selected. It then runs to completion.",
+    SJF_P: "The CPU selects the arrived process with the shortest remaining time. A newly arrived process can preempt the current one if its remaining time is shorter.",
+    PRIORITY_NP: "Among arrived processes, the lowest priority number is selected. The selected process runs until completion.",
+    PRIORITY_P: "The process with the lowest priority number among arrived processes runs. A newly arrived higher-priority process can preempt it.",
+    RR: "Processes take turns in FIFO ready-queue order. Each receives at most the configured time quantum before an unfinished process returns to the queue.",
+  };
+
+  const processMap = Object.fromEntries(processes.map((p) => [p.pid, p]));
+  const busySlots = timeline.filter((slot) => slot.pid !== null);
+  const idleSlots = timeline.filter((slot) => slot.pid === null);
+  const processSwitches = busySlots.slice(1).filter((slot, index) => slot.pid !== busySlots[index].pid).length;
+  const longestWait = Object.entries(metrics.process_metrics)
+    .sort((a, b) => b[1].waiting_time - a[1].waiting_time)[0];
+  const totalBusy = busySlots.reduce((sum, slot) => sum + slot.end_time - slot.start_time, 0);
+  const totalIdle = idleSlots.reduce((sum, slot) => sum + slot.end_time - slot.start_time, 0);
+
+  const explanations = timeline.map((slot, index) => {
+    if (slot.pid === null) {
+      return {
+        title: `CPU idle: ${slot.start_time}–${slot.end_time}`,
+        detail: "No process had arrived and was ready to execute during this interval.",
+      };
+    }
+
+    const process = processMap[slot.pid];
+    const duration = slot.end_time - slot.start_time;
+    const next = timeline[index + 1];
+    let ending = "This execution interval completed the process.";
+    if (next && next.pid !== slot.pid) {
+      const completed = metrics.process_metrics[slot.pid].completion_time === slot.end_time;
+      if (completed) ending = "The process completed at the end of this interval, so the CPU moved to another process.";
+      else if (algorithm === "RR") ending = "The time slice ended before the process finished, so it returned to the ready queue.";
+      else if (algorithm.endsWith("_P")) ending = "The CPU switched away from this process, consistent with preemptive scheduling.";
+      else ending = "The CPU moved to the next ready process.";
+    } else if (!next) {
+      ending = "This was the final execution interval in the schedule.";
+    }
+
+    let selected = "The scheduler selected this process according to its scheduling policy.";
+    if (algorithm === "FCFS") selected = "It was the earliest-arrived process in the ready order.";
+    if (algorithm.startsWith("SJF")) selected = `Its ${algorithm === "SJF_P" ? "remaining time" : "burst time"} made it the shortest eligible job at selection time.`;
+    if (algorithm.startsWith("PRIORITY")) selected = `Its priority value (${process.priority}) made it the highest-priority eligible process. Lower numbers represent higher priority.`;
+    if (algorithm === "RR") selected = "It was at the front of the ready queue when its turn began.";
+
+    return {
+      title: `${slot.pid} ran: ${slot.start_time}–${slot.end_time} (${duration} units)`,
+      detail: `${selected} ${ending}`,
+    };
+  });
+
+  return (
+    <motion.section
+      className="insights-panel panel"
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45 }}
+    >
+      <div className="results-heading">
+        <div>
+          <div className="section-kicker">05 / SCHEDULING INSIGHTS</div>
+          <h2>Why did the CPU behave this way?</h2>
+          <p className="insight-subtitle">{names[algorithm]} decision breakdown</p>
+        </div>
+        <span className="faceoff-count">EXPLAINED FROM TIMELINE</span>
+      </div>
+
+      <div className="insight-rule">
+        <span className="insight-rule-label">SCHEDULING RULE</span>
+        <p>{rules[algorithm]}</p>
+      </div>
+
+      <div className="insight-stat-grid">
+        <div><strong>{processSwitches}</strong><span>PROCESS SWITCHES</span></div>
+        <div><strong>{idleSlots.length}</strong><span>IDLE PERIODS</span></div>
+        <div><strong>{totalIdle}</strong><span>IDLE TIME UNITS</span></div>
+        <div><strong>{totalBusy}</strong><span>BUSY TIME UNITS</span></div>
+      </div>
+
+      {longestWait && (
+        <div className="longest-wait-note">
+          <strong>Longest waiting process: {longestWait[0]}</strong>
+          <span>
+            It waited {longestWait[1].waiting_time} time units before and between its CPU execution.
+            Average waiting time across all processes was {Number(metrics.average_waiting_time).toFixed(2)} units.
+          </span>
+        </div>
+      )}
+
+      <div className="decision-list-heading">
+        <h3>Execution decisions</h3>
+        <span>{timeline.length} TIMELINE INTERVALS</span>
+      </div>
+      <div className="decision-list">
+        {explanations.map((item, index) => (
+          <article className="decision-item" key={`${item.title}-${index}`}>
+            <span className="decision-index">{String(index + 1).padStart(2, "0")}</span>
+            <div>
+              <strong>{item.title}</strong>
+              <p>{item.detail}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+    </motion.section>
   );
 }
 
